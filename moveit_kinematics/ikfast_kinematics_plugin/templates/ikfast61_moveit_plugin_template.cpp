@@ -809,6 +809,42 @@ bool IKFastKinematicsPlugin::searchPositionIK(const geometry_msgs::Pose& ik_pose
       return false;
     }
 
+    // rotate joints by +/-360° where it is possible and useful
+    for (std::size_t i = 0; i < solutions.size(); i++)
+    {
+      for (std::size_t j = 0; j < num_joints_; ++j)
+      {
+        if (joint_has_limits_vector_[j])
+        {
+          double signed_distance = solutions[i][j] - ik_seed_state[j];
+          while (signed_distance > M_PI && solutions[i][j] - 2 * M_PI > (joint_min_vector_[j] - LIMIT_TOLERANCE))
+          {
+            signed_distance -= 2 * M_PI;
+            solutions[i][j] -= 2 * M_PI;
+          }
+          while (signed_distance < -M_PI && solutions[i][j] + 2 * M_PI < (joint_max_vector_[j] + LIMIT_TOLERANCE))
+          {
+            signed_distance += 2 * M_PI;
+            solutions[i][j] += 2 * M_PI;
+          }
+        }
+      }
+    }
+
+    // sort solutions by their distance to the seed
+    std::vector<LimitObeyingSol> solutions_obey_limits;
+    for (std::size_t i = 0; i < solutions.size(); ++i)
+    {
+      double dist_from_seed = 0.0;
+      for (std::size_t j = 0; j < ik_seed_state.size(); ++j)
+      {
+        dist_from_seed += fabs(ik_seed_state[j] - solutions[i][j]);
+      }
+
+      solutions_obey_limits.push_back({ solutions[i], dist_from_seed });
+    }
+    std::sort(solutions_obey_limits.begin(), solutions_obey_limits.end());
+
     // check for collisions if a callback is provided
     if (!solution_callback.empty())
     {
